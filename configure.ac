@@ -52,8 +52,8 @@ AC_CACHE_SAVE
 
 # Checks for libraries.
 AC_CHECK_LIB([iberty], [main], [], [])
-AC_CHECK_LIB([bfd], [main], [],
-  [AC_MSG_ERROR([BFD library was not found.])])
+AC_CHECK_LIB([bfd], [main], [], [AC_MSG_ERROR([BFD library was not found.])])
+AC_CHECK_LIB([tbb], [main], [], [AC_MSG_ERROR([TBB library was not found.])])
 AC_CACHE_SAVE
 
 # Checks for common header files.

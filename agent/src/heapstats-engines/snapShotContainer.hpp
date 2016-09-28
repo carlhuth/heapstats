@@ -22,10 +22,8 @@
 #ifndef _SNAPSHOT_CONTAINER_HPP
 #define _SNAPSHOT_CONTAINER_HPP
 
-#include <pthread.h>
-
-#include <tr1/unordered_map>
-#include <queue>
+#include <tbb/concurrent_unordered_map.h>
+#include <tbb/concurrent_queue.h>
 
 #include "jvmInfo.hpp"
 #include "oopUtil.hpp"
@@ -129,19 +127,8 @@ class TSnapShotContainer;
 /*!
  * \brief This type is for queue store snapshot information.
  */
-typedef std::queue<TSnapShotContainer *> TSnapShotQueue;
+typedef tbb::concurrent_bounded_queue<TSnapShotContainer *> TSnapShotQueue;
 
-/*!
- * \brief This class is stored class object usage on heap.
- */
-class TSnapShotContainer;
-
-/*!
- * \brief This type is for TSnapShotContainer in Thread-Local-Storage.
- */
-typedef std::tr1::unordered_map<pthread_t, TSnapShotContainer *,
-                                TNumericalHasher<pthread_t> >
-    TLocalSnapShotContainer;
 
 /*!
  * \brief This class is stored class object usage on heap.
@@ -222,16 +209,6 @@ class TSnapShotContainer {
   void Inc(TObjectCounter *counter, jlong size);
 
   /*!
-   * \brief Increment instance count and using size without lock.
-   * \param counter [in] Increment target class.
-   * \param size    [in] Increment object size.
-   */
-  inline void FastInc(TObjectCounter *counter, jlong size) {
-    counter->count++;
-    counter->total_size += size;
-  }
-
-  /*!
    * \brief Increment instance count and using size.
    * \param counter [in] Increment target class.
    * \param operand [in] Right-hand operand (SRC operand).
@@ -247,7 +224,7 @@ class TSnapShotContainer {
    */
   inline TClassCounter *findClass(TObjectData *objData) {
     auto it = counterMap.find(objData);
-    return (it != counterMap.end()) ? (*it).second : NULL;
+    return (it != counterMap.end()) ? it->second : NULL;
   }
 
   /*!
@@ -325,65 +302,6 @@ class TSnapShotContainer {
   void clear(bool isForce);
 
   /*!
-   * \brief Get local snapshot container with each threads.
-   * \return Local snapshot container instance for this thread.
-   */
-  inline TSnapShotContainer *getLocalContainer(void) {
-    TSnapShotContainer *result = NULL;
-
-    /* Get root and local snapshot conatiner. */
-    result = (TSnapShotContainer *)pthread_getspecific(snapShotContainerKey);
-
-    /* If not exists local container. */
-    if (unlikely(result == NULL)) {
-      pthread_t selfThreadId = pthread_self();
-
-      /* Get snapshot container's spin lock. */
-      spinLockWait(&lockval);
-      {
-        TLocalSnapShotContainer::iterator it = containerMap.find(selfThreadId);
-        if (it != containerMap.end()) {
-          result = (*it).second;
-        }
-      }
-      /* Release snapshot container's spin lock. */
-      spinLockRelease(&lockval);
-
-      if (unlikely(result == NULL)) {
-        try {
-          result = new TSnapShotContainer(false);
-        } catch (...) {
-          /* Maybe raise badalloc exception. */
-          return NULL;
-        }
-
-        /* Get snapshot container's spin lock. */
-        spinLockWait(&lockval);
-        {
-          try {
-            containerMap[selfThreadId] = result;
-          } catch (...) {
-            /* Failed to add map. Maybe no more free memory. */
-            delete result;
-            result = NULL;
-          }
-        }
-        /* Release snapshot container's spin lock. */
-        spinLockRelease(&lockval);
-      }
-
-      /* Set local snapshot conatiner. */
-      pthread_setspecific(snapShotContainerKey, result);
-    }
-    return result;
-  }
-
-  /*!
-   * \brief Merge children data.
-   */
-  virtual void mergeChildren(void);
-
-  /*!
    * \brief Set "isCleared" flag.
    */
   inline void setIsCleared(bool flag) { this->isCleared = flag; }
@@ -392,7 +310,7 @@ class TSnapShotContainer {
   /*!
    * \brief TSnapshotContainer constructor.
    */
-  TSnapShotContainer(bool isParent = true);
+  TSnapShotContainer(void);
   /*!
    * \brief TSnapshotContainer destructor.
    */
@@ -417,17 +335,6 @@ class TSnapShotContainer {
   void clearChildClassCounters(TClassCounter *counter);
 
   /*!
-   * \brief Pthread mutex for instance control.<br>
-   * <br>
-   * This mutex used in below process.<br>
-   *   - TSnapShotContainer::getInstance @ snapShotContainer.cpp<br>
-   *     To get older snapShotContainer instance from stockQueue.<br>
-   *   - TSnapShotContainer::releaseInstance @ snapShotContainer.cpp<br>
-   *     To add used snapShotContainer instance to stockQueue.<br>
-   */
-  static pthread_mutex_t instanceLocker;
-
-  /*!
    * \brief Snapshot container instance stock queue.
    */
   static TSnapShotQueue *stockQueue;
@@ -440,13 +347,8 @@ class TSnapShotContainer {
   /*!
    * \brief Maps of counter of each java class.
    */
-  std::tr1::unordered_map<TObjectData *, TClassCounter *,
-                                TNumericalHasher<void *> > counterMap;
-
-  /*!
-   * \brief Maps of TSnapShotContainer and thread.
-   */
-  TLocalSnapShotContainer containerMap;
+  tbb::concurrent_unordered_map<TObjectData *, TClassCounter *,
+                                       TNumericalHasher<void *> > counterMap;
 
   RELEASE_ONLY(private :)
 
@@ -454,21 +356,6 @@ class TSnapShotContainer {
    * \brief Snapshot header.
    */
   volatile TSnapShotFileHeader _header;
-
-  /*!
-   * \brief SpinLock variable for each snapshot class container.
-   */
-  volatile int lockval;
-
-  /*!
-   * \brief The thread key for map of local snapshot containers.
-   */
-  pthread_key_t snapShotContainerKey;
-
-  /*!
-   * \brief Is this container is parent container ?
-   */
-  bool isParentContainer;
 
   /*!
    * \brief Is this container is cleared ?

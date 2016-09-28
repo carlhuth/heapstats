@@ -351,7 +351,7 @@ inline char *strerror_wrapper(char *buf, size_t buflen) {
 /* Classes. */
 
 /*!
- * \brief Hasher class for std::tr1::unordered_map.
+ * \brief Hasher class for unordered_map.
  *        This template class will be used when key is numeric type.
  *        (int, pointer, etc)
  */

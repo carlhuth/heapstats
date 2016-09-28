@@ -14,17 +14,17 @@ Buildroot: /var/tmp/heapstats
 
 # Requires for running
 Requires: pcre >= 6
+Requires: tbb
 
 # Requires for building
 BuildRequires: pcre-devel >= 6
 BuildRequires: net-snmp-devel >= 5.3
 BuildRequires: java-1.8.0-openjdk-devel
-BuildRequires: binutils >= 2
 BuildRequires: binutils-devel
 BuildRequires: autoconf
 BuildRequires: automake
-BuildRequires: libtool
 BuildRequires: maven
+BuildRequires: tbb-devel
 
 %package cli
 Summary:   HeapStats CLI
@@ -118,6 +118,8 @@ rm -rf $RPM_BUILD_ROOT
 
 
 %changelog
+* Wed Sep 28 2016 Yasumasa Suenaga <yasuenag@gmail.com>
+- Change dependencies.
 * Tue Feb 09 2016 KUBOTA Yuji <kubota.yuji@lab.ntt.co.jp>
 - Set version to 2.0.trunk
 * Thu Oct 22 2015 Yasumasa Suenaga <yasuenag@gmail.com>

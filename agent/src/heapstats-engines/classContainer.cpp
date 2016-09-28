@@ -83,47 +83,18 @@ static char ORDER_DELTA[6] = "DELTA";
 
 /*!
  * \brief TClassContainer constructor.
- * \param base      [in] Parent class container instance.
  * \param needToClr [in] Flag of deallocate all data on destructor.
  */
-TClassContainer::TClassContainer(TClassContainer *base, bool needToClr)
-    : localContainers() {
+TClassContainer::TClassContainer(bool needToClr) {
   /* Initialize each field. */
-  lockval = 0;
-  queueLock = 0;
   needToClear = needToClr;
   classMap = NULL;
   pSender = NULL;
   unloadedList = NULL;
 
-  if (likely(base != NULL)) {
-    /* Get parent container's spin lock. */
-    spinLockWait(&base->lockval);
-  }
+  classMap = new TClassMap();
 
   try {
-    if (unlikely(base == NULL)) {
-      classMap = new TClassMap();
-    } else {
-      classMap = new TClassMap(*base->classMap);
-    }
-  } catch (...) {
-    /*
-     * This statement is for release lock. So allocate check is after.
-     */
-  }
-
-  if (likely(base != NULL)) {
-    /* Release parent container's spin lock. */
-    spinLockRelease(&base->lockval);
-  }
-
-  try {
-    /* Check classMap. */
-    if (unlikely(classMap == NULL)) {
-      throw 1;
-    }
-
     /* Create trap sender. */
     if (conf->SnmpSend()->get()) {
       pSender = new TTrapSender(SNMP_VERSION_2c, conf->SnmpTarget()->get(),
@@ -134,11 +105,6 @@ TClassContainer::TClassContainer(TClassContainer *base, bool needToClr)
 
     /* Create unloaded class information queue. */
     unloadedList = new TClassInfoQueue();
-
-    /* Create thread storage key. */
-    if (unlikely(pthread_key_create(&clsContainerKey, NULL) != 0)) {
-      throw 1;
-    }
   } catch (...) {
     delete classMap;
     delete pSender;
@@ -156,18 +122,10 @@ TClassContainer::~TClassContainer(void) {
     this->allClear();
   }
 
-  /* Cleanup ClassContainer in TLS. */
-  for (auto it = localContainers.begin(); it != localContainers.end(); it++) {
-    delete *it;
-  }
-
   /* Cleanup instances. */
   delete classMap;
   delete pSender;
   delete unloadedList;
-
-  /* Cleanup thread storage key. */
-  pthread_key_delete(clsContainerKey);
 }
 
 /*!
@@ -238,72 +196,52 @@ TObjectData *TClassContainer::pushNewClass(void *klassOop) {
 TObjectData *TClassContainer::pushNewClass(void *klassOop,
                                            TObjectData *objData) {
   TObjectData *existData = NULL;
-  /* Get class container's spin lock. */
-  spinLockWait(&lockval);
-  {
-    /*
-     * Jvmti extension event "classUnload" is loose once in a while.
-     * The event forget callback occasionally when class unloading.
-     * So we need to check klassOop that was doubling.
-     */
 
-    /* Check klassOop doubling. */
-    auto it = classMap->find(klassOop);
-    if (likely(it != classMap->end())) {
-      /* Store data to return value as result. */
-      TObjectData *expectData = (*it).second;
-      if (likely(expectData != NULL)) {
-        /* If adding class data is already exists. */
-        if (unlikely(expectData->className != NULL &&
-                     strcmp(objData->className, expectData->className) == 0 &&
-                     objData->clsLoaderId == expectData->clsLoaderId)) {
-          /* Return existing data on map. */
-          existData = expectData;
-        } else {
-          /* klass oop is doubling for another class. */
-          removeClass(expectData);
-          try {
-            unloadedList->push(expectData);
-          } catch (...) {
-            /*
-             * We try to continue running without crash
-             * even if failed to allocate memory.
-             */
-          }
+  /*
+   * Jvmti extension event "classUnload" is loose once in a while.
+   * The event forget callback occasionally when class unloading.
+   * So we need to check klassOop that was doubling.
+   */
+
+  /* Check klassOop doubling. */
+  auto it = classMap->find(klassOop);
+  if (likely(it != classMap->end())) {
+    /* Store data to return value as result. */
+    TObjectData *expectData = it->second;
+    if (likely(expectData != NULL)) {
+      /* If adding class data is already exists. */
+      if (unlikely(expectData->className != NULL &&
+                   strcmp(objData->className, expectData->className) == 0 &&
+                   objData->clsLoaderId == expectData->clsLoaderId)) {
+        /* Return existing data on map. */
+        existData = expectData;
+      } else {
+        /* klass oop is doubling for another class. */
+        removeClass(expectData);
+        try {
+          unloadedList->push(expectData);
+        } catch (...) {
+          /*
+           * We try to continue running without crash
+           * even if failed to allocate memory.
+           */
         }
       }
     }
+  }
 
-    if (likely(existData == NULL)) {
-      try {
-        /* Append class data. */
-        (*classMap)[klassOop] = objData;
-      } catch (...) {
-        /*
-         * Maybe failed to allocate memory at "std::map::operator[]".
-         */
-      }
+  if (likely(existData == NULL)) {
+    try {
+      /* Append class data. */
+      (*classMap)[klassOop] = objData;
+    } catch (...) {
+      /*
+       * Maybe failed to allocate memory at "std::map::operator[]".
+       */
     }
   }
-  /* Release class container's spin lock. */
-  spinLockRelease(&lockval);
 
-  /* If already exist class data. */
-  if (unlikely(existData != NULL)) {
-    return existData;
-  }
-
-  /* Get spin lock of containers queue. */
-  spinLockWait(&queueLock);
-  {
-    /* Broadcast to each local container. */
-    for (auto it = localContainers.begin(); it != localContainers.end(); it++) {
-      (*it)->pushNewClass(klassOop, objData);
-    }
-  }
-  /* Release spin lock of containers queue. */
-  spinLockRelease(&queueLock);
-  return objData;
+  return (likely(existData == NULL)) ? objData : existData;
 }
 
 /*!
@@ -323,71 +261,34 @@ void TClassContainer::popClass(TObjectData *target) {
  * \param target [in] Remove class data.
  */
 void TClassContainer::removeClass(TObjectData *target) {
-  /* Remove item from map. Please callee has container's lock. */
-  classMap->erase(target->klassOop);
-
-  /* Get spin lock of containers queue. */
-  spinLockWait(&queueLock);
-  {
-    /* Broadcast to each local container. */
-    for (auto it = localContainers.begin(); it != localContainers.end(); it++) {
-      /* Get local container's spin lock. */
-      spinLockWait(&(*it)->lockval);
-      { (*it)->classMap->erase(target->klassOop); }
-      /* Release local container's spin lock. */
-      spinLockRelease(&(*it)->lockval);
-    }
-  }
-  /* Release spin lock of containers queue. */
-  spinLockRelease(&queueLock);
+  // Class unloading will occur at single-threaded safepoint (not MT).
+  // So we can execute unsafe operation.
+  classMap->unsafe_erase(target->klassOop);
 }
 
 /*!
  * \brief Remove all-class from container.
  */
 void TClassContainer::allClear(void) {
-  /* Get spin lock of containers queue. */
-  spinLockWait(&queueLock);
-  {
-    /* Broadcast to each local container. */
-    for (auto it = localContainers.begin(); it != localContainers.end(); it++) {
-      /* Get local container's spin lock. */
-      spinLockWait(&(*it)->lockval);
-      { (*it)->classMap->clear(); }
-      /* Release local container's spin lock. */
-      spinLockRelease(&(*it)->lockval);
-    }
-  }
-  /* Release spin lock of containers queue. */
-  spinLockRelease(&queueLock);
+  /* Free allocated memory at class map. */
+  for (auto cur = classMap->begin(); cur != classMap->end(); cur++) {
+    TObjectData *pos = cur->second;
 
-  /* Get class container's spin lock. */
-  spinLockWait(&lockval);
-  {
-    /* Free allocated memory at class map. */
-    for (auto cur = classMap->begin(); cur != classMap->end(); ++cur) {
-      TObjectData *pos = (*cur).second;
-
-      if (likely(pos != NULL)) {
-        free(pos->className);
-        free(pos);
-      }
-    }
-
-    /* Free allocated memory at unloaded list. */
-    while (!unloadedList->empty()) {
-      TObjectData *pos = unloadedList->front();
-      unloadedList->pop();
-
+    if (likely(pos != NULL)) {
       free(pos->className);
       free(pos);
     }
-
-    /* Clear all class. */
-    classMap->clear();
   }
-  /* Release class container's spin lock. */
-  spinLockRelease(&lockval);
+
+  /* Free allocated memory at unloaded list. */
+  TObjectData *pos;
+  while (unloadedList->try_pop(pos)) {
+    free(pos->className);
+    free(pos);
+  }
+
+  /* Clear all class. */
+  classMap->clear();
 }
 
 /*!
@@ -745,17 +646,11 @@ int TClassContainer::afterTakeSnapShot(TSnapShotContainer *snapshot,
 
   /* Class map used snapshot output. */
   TClassMap *workClsMap = NULL;
-  /* Get class container's spin lock. */
-  spinLockWait(&lockval);
-  {
-    try {
-      workClsMap = new TClassMap(*this->classMap);
-    } catch (...) {
-      workClsMap = NULL;
-    }
+  try {
+    workClsMap = new TClassMap(*this->classMap);
+  } catch (...) {
+    workClsMap = NULL;
   }
-  /* Release class container's spin lock. */
-  spinLockRelease(&lockval);
 
   if (unlikely(workClsMap == NULL)) {
     int raisedErrNum = errno;
@@ -826,7 +721,7 @@ int TClassContainer::afterTakeSnapShot(TSnapShotContainer *snapshot,
   register jlong AlertThreshold = conf->getAlertThreshold();
 
   /* Loop each class. */
-  for (auto it = workClsMap->begin(); it != workClsMap->end(); ++it) {
+  for (auto it = workClsMap->begin(); it != workClsMap->end(); it++) {
     TObjectData *objData = (*it).second;
     TClassCounter *cur = snapshot->findClass(objData);
     /* If don't registed class yet. */
@@ -948,62 +843,52 @@ int TClassContainer::afterTakeSnapShot(TSnapShotContainer *snapshot,
 void TClassContainer::commitClassChange(void) {
   TClassInfoQueue *list = NULL;
 
-  /* Get class container's spin lock. */
-  spinLockWait(&lockval);
-  {
-    /* Remove unloaded class which detected at "pushNewClass". */
-    while (!unloadedList->empty()) {
-      TObjectData *target = unloadedList->front();
-      unloadedList->pop();
+  /* Remove unloaded class which detected at "pushNewClass". */
+  TObjectData *target;
+  while (unloadedList->try_pop(target)) {
+    /* Free allocated memory. */
+    free(target->className);
+    free(target);
+  }
+
+  try {
+    list = new TClassInfoQueue();
+
+    /* Search delete target. */
+    for (auto cur = classMap->begin(); cur != classMap->end(); cur++) {
+      TObjectData *objData = cur->second;
+
+      /* If class is prepared remove from class container. */
+      if (unlikely(objData->oldTotalSize == 0 && objData->isRemoved)) {
+        /*
+         * If we do removing map item here,
+         * iterator's relationship will be broken.
+         * So we store to list. And we remove after iterator loop.
+         */
+        list->push(objData);
+      }
+    }
+  } catch (...) {
+    /*
+     * Maybe failed to allocate memory.
+     * E.g. raise exception at "new", "std::queue<T>::push" or etc..
+     */
+    delete list;
+    list = NULL;
+  }
+
+  if (likely(list != NULL)) {
+    TObjectData *target;
+    /* Remove delete target. */
+    while (list->try_pop(target)) {
+      /* Remove from all containers. */
+      removeClass(target);
 
       /* Free allocated memory. */
       free(target->className);
       free(target);
     }
-
-    try {
-      list = new TClassInfoQueue();
-
-      /* Search delete target. */
-      for (auto cur = classMap->begin(); cur != classMap->end(); ++cur) {
-        TObjectData *objData = (*cur).second;
-
-        /* If class is prepared remove from class container. */
-        if (unlikely(objData->oldTotalSize == 0 && objData->isRemoved)) {
-          /*
-           * If we do removing map item here,
-           * iterator's relationship will be broken.
-           * So we store to list. And we remove after iterator loop.
-           */
-          list->push(objData);
-        }
-      }
-    } catch (...) {
-      /*
-       * Maybe failed to allocate memory.
-       * E.g. raise exception at "new", "std::queue<T>::push" or etc..
-       */
-      delete list;
-      list = NULL;
-    }
-
-    if (likely(list != NULL)) {
-      /* Remove delete target. */
-      while (!list->empty()) {
-        TObjectData *target = list->front();
-        list->pop();
-
-        /* Remove from all containers. */
-        removeClass(target);
-
-        /* Free allocated memory. */
-        free(target->className);
-        free(target);
-      }
-    }
   }
-  /* Release class container's spin lock. */
-  spinLockRelease(&lockval);
 
   /* Cleanup. */
   delete list;

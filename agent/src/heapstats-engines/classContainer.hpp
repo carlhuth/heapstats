@@ -22,8 +22,8 @@
 #ifndef CLASS_CONTAINER_HPP
 #define CLASS_CONTAINER_HPP
 
-#include <tr1/unordered_map>
-#include <deque>
+#include <tbb/concurrent_unordered_map.h>
+#include <tbb/concurrent_queue.h>
 
 #include "snapShotContainer.hpp"
 #include "sorter.hpp"
@@ -44,10 +44,7 @@ typedef struct {
   jlong delta; /*!< Class delta size from before snapshot. */
 } THeapDelta;
 
-/*!
- * \brief This type is for map stored class information.
- */
-typedef std::tr1::unordered_map<void *, TObjectData *,
+typedef tbb::concurrent_unordered_map<void *, TObjectData *,
                                 TNumericalHasher<void *> > TClassMap;
 
 /*!
@@ -56,15 +53,9 @@ typedef std::tr1::unordered_map<void *, TObjectData *,
 typedef enum { ALERT_JAVA_HEAP, ALERT_METASPACE } TMemoryUsageAlertType;
 
 /*!
- * \brief This class is stored class information.<br>
- *        e.g. class-name, class instance count, size, etc...
- */
-class TClassContainer;
-
-/*!
  * \brief This type is for storing unloaded class information.
  */
-typedef std::queue<TObjectData *> TClassInfoQueue;
+typedef tbb::concurrent_queue<TObjectData *> TClassInfoQueue;
 
 /*!
  * \brief This class is stored class information.<br>
@@ -74,10 +65,9 @@ class TClassContainer {
  public:
   /*!
    * \brief TClassContainer constructor.
-   * \param base      [in] Parent class container instance.
    * \param needToClr [in] Flag of deallocate all data on destructor.
    */
-  TClassContainer(TClassContainer *base = NULL, bool needToClr = true);
+  TClassContainer(bool needToClr = true);
   /*!
    * \brief TClassContainer destructor.
    */
@@ -118,32 +108,8 @@ class TClassContainer {
    * \return Class data of target class.
    */
   inline TObjectData *findClass(void *klassOop) {
-    /* Search class data. */
-    TObjectData *result = NULL;
-
-    /* Get class container's spin lock. */
-    spinLockWait(&lockval);
-    {
-      /* Search class data. */
-      auto it = classMap->find(klassOop);
-      if (it != classMap->end()) {
-        result = (*it).second;
-      }
-    }
-    /* Release class container's spin lock. */
-    spinLockRelease(&lockval);
-
-    return result;
-  }
-
-  /*!
-   * \brief Search class from container without container lock.
-   * \param klassOop [in] Target class oop.
-   * \return Class data of target class.
-   */
-  inline TObjectData *findClassWithoutLock(void *klassOop) {
-    auto it = classMap->find(klassOop);
-    return (it != classMap->end()) ? it->second : NULL;
+    auto itr = classMap->find(klassOop);
+    return (itr != classMap->end()) ? itr->second : NULL;
   }
 
   /*!
@@ -153,58 +119,11 @@ class TClassContainer {
    * \return Class data of target class.
    */
   inline void updateClass(void *oldKlassOop, void *newKlassOop) {
-    /* Get class container's spin lock. */
-    spinLockWait(&lockval);
-    {
-      /* Search class data. */
-      auto it = classMap->find(oldKlassOop);
-      if (it != classMap->end()) {
-        TObjectData *cur = (*it).second;
+    (*classMap)[newKlassOop] = (*classMap)[oldKlassOop];
 
-        /* Remove old klassOop. */
-        classMap->erase(it);
-
-        try {
-          /* Update class data. */
-          (*classMap)[newKlassOop] = cur;
-          cur->klassOop = newKlassOop;
-        } catch (...) {
-          /*
-           * Maybe failed to allocate memory
-           * at "std::map::operator[]".
-           */
-        }
-      }
-    }
-    /* Release class container's spin lock. */
-    spinLockRelease(&lockval);
-
-    /* Get spin lock of containers queue. */
-    spinLockWait(&queueLock);
-    {
-      auto it = localContainers.begin();
-      /* Broadcast to each local container. */
-      for (; it != localContainers.end(); it++) {
-        (*it)->updateClass(oldKlassOop, newKlassOop);
-      }
-    }
-    /* Release spin lock of containers queue. */
-    spinLockRelease(&queueLock);
-  }
-
-  /*!
-   * \brief Get class entries count.
-   * \return Entries count of class information.
-   */
-  inline size_t getContainerSize(void) {
-    size_t result = 0;
-
-    /* Get class container's spin lock. */
-    spinLockWait(&lockval);
-    { result = this->classMap->size(); }
-    /* Release class container's spin lock. */
-    spinLockRelease(&lockval);
-    return result;
+    // Class relocation will occur at single-threaded safepoint (not MT).
+    // So we can execute unsafe operation.
+    classMap->unsafe_erase(oldKlassOop);
   }
 
   /*!
@@ -222,48 +141,6 @@ class TClassContainer {
                                 TSorter<THeapDelta> **rank);
 
   /*!
-   * \brief Get local class container with each threads.
-   * \return Local class container instance for this thread.
-   */
-  inline TClassContainer *getLocalContainer(void) {
-    /* Get container for this thread. */
-    TClassContainer *result =
-        (TClassContainer *)pthread_getspecific(clsContainerKey);
-
-    /* If container isn't exists yet. */
-    if (unlikely(result == NULL)) {
-      try {
-        result = new TClassContainer(this, false);
-      } catch (...) {
-        /* Maybe raised badalloc exception. */
-        return NULL;
-      }
-      pthread_setspecific(clsContainerKey, result);
-
-      bool isFailure = false;
-      /* Get spin lock of containers queue. */
-      spinLockWait(&queueLock);
-      {
-        try {
-          localContainers.push_back(result);
-        } catch (...) {
-          /* Maybe failed to add queue. */
-          isFailure = true;
-        }
-      }
-      /* Release spin lock of containers queue. */
-      spinLockRelease(&queueLock);
-
-      if (unlikely(isFailure)) {
-        delete result;
-        result = NULL;
-      }
-    }
-
-    return result;
-  }
-
-  /*!
    * \brief Commit class information changing in class container.<br>
    *        This function needs to prevent the crash which is related
    *        to class unloading. <br>
@@ -273,10 +150,6 @@ class TClassContainer {
   virtual void commitClassChange(void);
 
  protected:
-  /*!
-   * \brief ClassContainer in TLS of each threads.
-   */
-  std::deque<TClassContainer *> localContainers;
 
   RELEASE_ONLY(private :)
   /*!
@@ -288,21 +161,6 @@ class TClassContainer {
    * \brief Maps of class counting record.
    */
   TClassMap *classMap;
-
-  /*!
-   * \brief The thread storage key for each local class container.
-   */
-  pthread_key_t clsContainerKey;
-
-  /*!
-   * \brief SpinLock variable for class container instance.
-   */
-  volatile int lockval;
-
-  /*!
-   * \brief SpinLock variable for queue of local class containers.
-   */
-  volatile int queueLock;
 
   /*!
    * \brief Do we need to clear at destructor?
