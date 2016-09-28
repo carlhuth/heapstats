@@ -50,8 +50,8 @@
  *       Other fields (bit 1 - 6) are reserved.
  * \warning Don't change output snapshot format, if you change this value.
  */
-#define EXTENDED_SNAPSHOT         0x80  // 0b10000000
-#define EXTENDED_REFTREE_SNAPSHOT 0x81  // 0b10000001
+#define EXTENDED_SNAPSHOT         0b10000000
+#define EXTENDED_REFTREE_SNAPSHOT 0b10000001
 
 /*!
  * \brief This structure stored class size and number of class-instance.
