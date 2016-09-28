@@ -132,12 +132,6 @@ class TSnapShotContainer;
 typedef std::queue<TSnapShotContainer *> TSnapShotQueue;
 
 /*!
- * \brief This type is for map stored size information.
- */
-typedef std::tr1::unordered_map<TObjectData *, TClassCounter *,
-                                TNumericalHasher<void *> > TSizeMap;
-
-/*!
  * \brief This class is stored class object usage on heap.
  */
 class TSnapShotContainer;
@@ -252,7 +246,7 @@ class TSnapShotContainer {
    *         Value is null, if class is not found.
    */
   inline TClassCounter *findClass(TObjectData *objData) {
-    TSizeMap::iterator it = counterMap.find(objData);
+    auto it = counterMap.find(objData);
     return (it != counterMap.end()) ? (*it).second : NULL;
   }
 
@@ -446,7 +440,8 @@ class TSnapShotContainer {
   /*!
    * \brief Maps of counter of each java class.
    */
-  TSizeMap counterMap;
+  std::tr1::unordered_map<TObjectData *, TClassCounter *,
+                                TNumericalHasher<void *> > counterMap;
 
   /*!
    * \brief Maps of TSnapShotContainer and thread.

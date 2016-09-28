@@ -312,7 +312,7 @@ void TTrapSender::clearValues(void) {
   }
 
   /* Free allocated strings. */
-  std::set<char *>::iterator it = strSet.begin();
+  auto it = strSet.begin();
   while (it != strSet.end()) {
     free((*it));
     ++it;

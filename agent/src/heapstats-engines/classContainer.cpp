@@ -157,8 +157,7 @@ TClassContainer::~TClassContainer(void) {
   }
 
   /* Cleanup ClassContainer in TLS. */
-  for (TLocalClassContainer::iterator it = localContainers.begin();
-       it != localContainers.end(); it++) {
+  for (auto it = localContainers.begin(); it != localContainers.end(); it++) {
     delete *it;
   }
 
@@ -249,7 +248,7 @@ TObjectData *TClassContainer::pushNewClass(void *klassOop,
      */
 
     /* Check klassOop doubling. */
-    TClassMap::iterator it = classMap->find(klassOop);
+    auto it = classMap->find(klassOop);
     if (likely(it != classMap->end())) {
       /* Store data to return value as result. */
       TObjectData *expectData = (*it).second;
@@ -298,8 +297,7 @@ TObjectData *TClassContainer::pushNewClass(void *klassOop,
   spinLockWait(&queueLock);
   {
     /* Broadcast to each local container. */
-    for (TLocalClassContainer::iterator it = localContainers.begin();
-         it != localContainers.end(); it++) {
+    for (auto it = localContainers.begin(); it != localContainers.end(); it++) {
       (*it)->pushNewClass(klassOop, objData);
     }
   }
@@ -332,8 +330,7 @@ void TClassContainer::removeClass(TObjectData *target) {
   spinLockWait(&queueLock);
   {
     /* Broadcast to each local container. */
-    for (TLocalClassContainer::iterator it = localContainers.begin();
-         it != localContainers.end(); it++) {
+    for (auto it = localContainers.begin(); it != localContainers.end(); it++) {
       /* Get local container's spin lock. */
       spinLockWait(&(*it)->lockval);
       { (*it)->classMap->erase(target->klassOop); }
@@ -353,8 +350,7 @@ void TClassContainer::allClear(void) {
   spinLockWait(&queueLock);
   {
     /* Broadcast to each local container. */
-    for (TLocalClassContainer::iterator it = localContainers.begin();
-         it != localContainers.end(); it++) {
+    for (auto it = localContainers.begin(); it != localContainers.end(); it++) {
       /* Get local container's spin lock. */
       spinLockWait(&(*it)->lockval);
       { (*it)->classMap->clear(); }
@@ -369,8 +365,7 @@ void TClassContainer::allClear(void) {
   spinLockWait(&lockval);
   {
     /* Free allocated memory at class map. */
-    for (TClassMap::iterator cur = classMap->begin(); cur != classMap->end();
-         ++cur) {
+    for (auto cur = classMap->begin(); cur != classMap->end(); ++cur) {
       TObjectData *pos = (*cur).second;
 
       if (likely(pos != NULL)) {
@@ -831,8 +826,7 @@ int TClassContainer::afterTakeSnapShot(TSnapShotContainer *snapshot,
   register jlong AlertThreshold = conf->getAlertThreshold();
 
   /* Loop each class. */
-  for (TClassMap::iterator it = workClsMap->begin(); it != workClsMap->end();
-       ++it) {
+  for (auto it = workClsMap->begin(); it != workClsMap->end(); ++it) {
     TObjectData *objData = (*it).second;
     TClassCounter *cur = snapshot->findClass(objData);
     /* If don't registed class yet. */
@@ -971,8 +965,7 @@ void TClassContainer::commitClassChange(void) {
       list = new TClassInfoQueue();
 
       /* Search delete target. */
-      for (TClassMap::iterator cur = classMap->begin(); cur != classMap->end();
-           ++cur) {
+      for (auto cur = classMap->begin(); cur != classMap->end(); ++cur) {
         TObjectData *objData = (*cur).second;
 
         /* If class is prepared remove from class container. */

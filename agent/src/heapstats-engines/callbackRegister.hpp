@@ -83,10 +83,9 @@ class TJVMTIEventCallback {
 template <typename T, jvmtiEvent event>
 std::list<T> TJVMTIEventCallback<T, event>::callbackList;
 
-#define ITERATE_CALLBACK_CHAIN(type, ...)                    \
-  for (std::list<type>::iterator itr = callbackList.begin(); \
-       itr != callbackList.end(); itr++) {                   \
-    (*itr)(__VA_ARGS__);                                     \
+#define ITERATE_CALLBACK_CHAIN(type, ...)                                   \
+  for (auto itr = callbackList.begin(); itr != callbackList.end(); itr++) { \
+    (*itr)(__VA_ARGS__);                                                    \
   }
 
 #define DEFINE_MERGE_CALLBACK(callbackName)                   \

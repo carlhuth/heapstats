@@ -188,7 +188,7 @@ TSnapShotContainer::TSnapShotContainer(bool isParent)
  */
 TSnapShotContainer::~TSnapShotContainer(void) {
   /* Cleanup elements on counter map. */
-  for (TSizeMap::iterator it = counterMap.begin(); it != counterMap.end();
+  for (auto it = counterMap.begin(); it != counterMap.end();
        ++it) {
     TClassCounter *clsCounter = (*it).second;
     if (unlikely(clsCounter == NULL)) {
@@ -215,8 +215,7 @@ TSnapShotContainer::~TSnapShotContainer(void) {
   }
 
   /* Cleanup elements on snapshot container map. */
-  for (TLocalSnapShotContainer::iterator it = containerMap.begin();
-       it != containerMap.end(); ++it) {
+  for (auto it = containerMap.begin(); it != containerMap.end(); ++it) {
     delete (*it).second;
   }
 
@@ -371,7 +370,7 @@ void TSnapShotContainer::clear(bool isForce) {
   spinLockWait(&lockval);
   {
     /* Clean heap usage information. */
-    for (TSizeMap::iterator it = counterMap.begin(); it != counterMap.end();
+    for (auto it = counterMap.begin(); it != counterMap.end();
          ++it) {
       TClassCounter *clsCounter = (*it).second;
       if (unlikely(clsCounter == NULL)) {
@@ -388,7 +387,7 @@ void TSnapShotContainer::clear(bool isForce) {
     }
 
     /* Clean local snapshots. */
-    for (TLocalSnapShotContainer::iterator it = containerMap.begin();
+    for (auto it = containerMap.begin();
          it != containerMap.end(); ++it) {
       (*it).second->clear(true);
     }
@@ -444,11 +443,11 @@ void TSnapShotContainer::mergeChildren(void) {
   spinLockWait(&lockval);
   {
     /* Loop each local snapshot container. */
-    for (TLocalSnapShotContainer::iterator it = this->containerMap.begin();
+    for (auto it = this->containerMap.begin();
          it != this->containerMap.end(); it++) {
       /* Loop each class in snapshot container. */
-      TSizeMap *srcCounterMap = &(*it).second->counterMap;
-      for (TSizeMap::iterator it2 = srcCounterMap->begin();
+      auto *srcCounterMap = &(*it).second->counterMap;
+      for (auto it2 = srcCounterMap->begin();
            it2 != srcCounterMap->end(); it2++) {
         TClassCounter *srcClsCounter = (*it2).second;
 

@@ -572,10 +572,7 @@ void TThreadRecorder::dump(const char *fname) {
     int threadIDMapSize = threadIDMap.size();
     write(fd, &threadIDMapSize, sizeof(int));
 
-    for (std::tr1::unordered_map<jlong, char *,
-                                 TNumericalHasher<jlong> >::iterator itr =
-             threadIDMap.begin();
-         itr != threadIDMap.end(); itr++) {
+    for (auto itr = threadIDMap.begin(); itr != threadIDMap.end(); itr++) {
       jlong id = itr->first;
       int classname_length = strlen(itr->second);
       write(fd, &id, sizeof(jlong));
@@ -700,8 +697,7 @@ void TThreadRecorder::putEvent(jthread thread, TThreadEvent event,
   if (unlikely(top_of_buffer->event == ThreadEnd)) {
     spinLockWait(&idmapLockVal);
     {
-      std::tr1::unordered_map<jlong, char *, TNumericalHasher<jlong> >
-              ::iterator entry = threadIDMap.find(top_of_buffer->thread_id);
+      auto entry = threadIDMap.find(top_of_buffer->thread_id);
 
       if (likely(entry != threadIDMap.end())) {
         free(entry->second);

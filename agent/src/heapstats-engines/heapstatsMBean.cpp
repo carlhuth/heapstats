@@ -442,8 +442,7 @@ JNIEXPORT jobject JNICALL
   jobject result = NULL;
   std::list<TConfigElementSuper *> configs = conf->getConfigs();
 
-  for (std::list<TConfigElementSuper *>::iterator itr = configs.begin();
-       itr != configs.end(); itr++) {
+  for (auto itr = configs.begin(); itr != configs.end(); itr++) {
     if (strcmp(opt, (*itr)->getConfigName()) == 0) {
       result = getConfigAsJObject(env, *itr);
       jthrowable ex = env->ExceptionOccurred();
@@ -478,8 +477,7 @@ JNIEXPORT jobject JNICALL GetConfigurationList(JNIEnv *env, jobject obj) {
   jstring key;
   jobject value = NULL;
 
-  for (std::list<TConfigElementSuper *>::iterator itr = configs.begin();
-       itr != configs.end(); itr++) {
+  for (auto itr = configs.begin(); itr != configs.end(); itr++) {
     key = createString(env, (*itr)->getConfigName());
     if (key == NULL) {
       return NULL;
@@ -520,8 +518,7 @@ JNIEXPORT jboolean JNICALL
   TConfiguration new_conf = *conf;
   std::list<TConfigElementSuper *> configs = new_conf.getConfigs();
 
-  for (std::list<TConfigElementSuper *>::iterator itr = configs.begin();
-       itr != configs.end(); itr++) {
+  for (auto itr = configs.begin(); itr != configs.end(); itr++) {
     try{
       if (strcmp(opt, (*itr)->getConfigName()) == 0) {
         switch ((*itr)->getConfigDataType()) {

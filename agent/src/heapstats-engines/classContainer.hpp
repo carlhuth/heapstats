@@ -62,11 +62,6 @@ typedef enum { ALERT_JAVA_HEAP, ALERT_METASPACE } TMemoryUsageAlertType;
 class TClassContainer;
 
 /*!
- * \brief This type is for TClassContainer in Thread-Local-Storage.
- */
-typedef std::deque<TClassContainer *> TLocalClassContainer;
-
-/*!
  * \brief This type is for storing unloaded class information.
  */
 typedef std::queue<TObjectData *> TClassInfoQueue;
@@ -130,7 +125,7 @@ class TClassContainer {
     spinLockWait(&lockval);
     {
       /* Search class data. */
-      TClassMap::iterator it = classMap->find(klassOop);
+      auto it = classMap->find(klassOop);
       if (it != classMap->end()) {
         result = (*it).second;
       }
@@ -147,7 +142,7 @@ class TClassContainer {
    * \return Class data of target class.
    */
   inline TObjectData *findClassWithoutLock(void *klassOop) {
-    TClassMap::iterator it = classMap->find(klassOop);
+    auto it = classMap->find(klassOop);
     return (it != classMap->end()) ? it->second : NULL;
   }
 
@@ -162,7 +157,7 @@ class TClassContainer {
     spinLockWait(&lockval);
     {
       /* Search class data. */
-      TClassMap::iterator it = classMap->find(oldKlassOop);
+      auto it = classMap->find(oldKlassOop);
       if (it != classMap->end()) {
         TObjectData *cur = (*it).second;
 
@@ -187,7 +182,7 @@ class TClassContainer {
     /* Get spin lock of containers queue. */
     spinLockWait(&queueLock);
     {
-      TLocalClassContainer::iterator it = localContainers.begin();
+      auto it = localContainers.begin();
       /* Broadcast to each local container. */
       for (; it != localContainers.end(); it++) {
         (*it)->updateClass(oldKlassOop, newKlassOop);
@@ -281,7 +276,7 @@ class TClassContainer {
   /*!
    * \brief ClassContainer in TLS of each threads.
    */
-  TLocalClassContainer localContainers;
+  std::deque<TClassContainer *> localContainers;
 
   RELEASE_ONLY(private :)
   /*!
