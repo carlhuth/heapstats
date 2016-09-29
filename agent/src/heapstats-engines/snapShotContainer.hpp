@@ -238,40 +238,40 @@ class TSnapShotContainer {
                                             void *klassOop) {
     TChildClassCounter *prevCounter = NULL;
     TChildClassCounter *morePrevCounter = NULL;
-    TChildClassCounter *counter = clsCounter->child;
+    TChildClassCounter *counter;
 
-    if (counter == NULL) {
-      return NULL;
-    }
+    spinLockWait(&clsCounter->spinlock);
+    {
+      counter = clsCounter->child;
 
-    /* Search children class list. */
-    while (counter->objData->klassOop != klassOop) {
-      morePrevCounter = prevCounter;
-      prevCounter = counter;
-      counter = counter->next;
-
-      if (counter == NULL) {
-        return NULL;
+      /* Search children class list. */
+      while ((counter != NULL) && (counter->objData->klassOop != klassOop)) {
+        morePrevCounter = prevCounter;
+        prevCounter = counter;
+        counter = counter->next;
       }
-    }
 
-    /* LFU (Least Frequently Used). */
-    if (counter != NULL) {
-      counter->callCount++;
+      /* LFU (Least Frequently Used). */
+      if (counter != NULL) {
+        counter->callCount++;
 
-      /* If counter need move to list head. */
-      if (prevCounter != NULL && prevCounter->callCount <= counter->callCount) {
-        prevCounter->next = counter->next;
-        if (morePrevCounter != NULL) {
-          /* Move to near list head. */
-          morePrevCounter->next = counter;
-        } else {
-          /* Move list head. */
-          clsCounter->child = counter;
+        /* If counter need move to list head. */
+        if ((prevCounter != NULL) &&
+            (prevCounter->callCount <= counter->callCount)) {
+          prevCounter->next = counter->next;
+          if (morePrevCounter != NULL) {
+            /* Move to near list head. */
+            morePrevCounter->next = counter;
+          } else {
+            /* Move list head. */
+            clsCounter->child = counter;
+          }
+          counter->next = prevCounter;
         }
-        counter->next = prevCounter;
       }
     }
+    spinLockRelease(&clsCounter->spinlock);
+
     return counter;
   }
 

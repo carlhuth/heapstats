@@ -29,11 +29,6 @@
 #include "sorter.hpp"
 #include "trapSender.hpp"
 
-#if PROCESSOR_ARCH == X86
-#include "arch/x86/lock.inline.hpp"
-#elif PROCESSOR_ARCH == ARM
-#include "arch/arm/lock.inline.hpp"
-#endif
 
 /*!
  * \brief This structure stored size of a class used in heap.

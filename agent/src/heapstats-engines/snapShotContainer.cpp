@@ -251,16 +251,20 @@ TChildClassCounter *TSnapShotContainer::pushNewChildClass(
   newCounter->objData = objData;
 
   /* Chain children list. */
-  TChildClassCounter *counter = clsCounter->child;
-  if (unlikely(counter == NULL)) {
-    clsCounter->child = newCounter;
-  } else {
-    /* Get last counter. */
-    while (counter->next != NULL) {
-      counter = counter->next;
+  spinLockWait(&clsCounter->spinlock);
+  {
+    TChildClassCounter *counter = clsCounter->child;
+    if (unlikely(counter == NULL)) {
+      clsCounter->child = newCounter;
+    } else {
+      /* Get last counter. */
+      while (counter->next != NULL) {
+        counter = counter->next;
+      }
+      counter->next = newCounter;
     }
-    counter->next = newCounter;
   }
+  spinLockRelease(&clsCounter->spinlock);
 
   return newCounter;
 }
