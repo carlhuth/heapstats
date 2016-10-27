@@ -72,13 +72,19 @@ AC_CHECK_HEADERS([ \
 AC_CHECK_HEADERS([sys/auxv.h], [], [])  # Supplemental headers
 AC_CACHE_SAVE
 
+### Check for C++
+AC_LANG_PUSH([C++])
+
+# Check C++11 flag
+CXXFLAGS+=" -std=c++11"
+AC_MSG_CHECKING([whether supports C++11])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([])],
+  [AC_MSG_RESULT([yes])],
+  [AC_MSG_ERROR([C++11 is not supported.])]
+)
+
 # Check C++11 regex
 AC_MSG_CHECKING([for std::regex])
-
-AC_LANG_PUSH([C++])
-ORIG_CXXFLAGS=$CXXFLAGS
-CXXFLAGS+=" -std=c++11"
-
 AC_RUN_IFELSE(
   [AC_LANG_PROGRAM(
     [[
@@ -93,13 +99,14 @@ AC_RUN_IFELSE(
   ], [
     AC_MSG_RESULT([no])
     AC_DEFINE(USE_PCRE,1)
-    CXXFLAGS=$ORIG_CXXFLAGS
     AC_CHECK_HEADERS([pcre.h], [], [AC_MSG_ERROR([PCRE not found.])])
     AC_CHECK_LIB([pcre], [main], [], [AC_MSG_ERROR([PCRE not found.])])
   ]
 )
 AM_CONDITIONAL(USE_PCRE, test -n "${ac_cv_header_pcre_h}")
+
 AC_LANG_POP([C++])
+### C++ check end
 
 # Checks for library header files.
 AC_CHECK_HEADERS([net-snmp/net-snmp-config.h],

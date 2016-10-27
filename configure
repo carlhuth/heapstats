@@ -6390,20 +6390,42 @@ $as_echo "$as_me: not updating unwritable cache $cache_file" >&6;}
 fi
 rm -f confcache
 
-# Check C++11 regex
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for std::regex" >&5
-$as_echo_n "checking for std::regex... " >&6; }
-
+### Check for C++
 ac_ext=cpp
 ac_cpp='$CXXCPP $CPPFLAGS'
 ac_compile='$CXX -c $CXXFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CXX -o conftest$ac_exeext $CXXFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
 
-ORIG_CXXFLAGS=$CXXFLAGS
+
+# Check C++11 flag
 CXXFLAGS+=" -std=c++11"
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether supports C++11" >&5
+$as_echo_n "checking whether supports C++11... " >&6; }
 
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
 
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_cxx_try_compile "$LINENO"; then :
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+$as_echo "yes" >&6; }
+else
+  as_fn_error $? "C++11 is not supported." "$LINENO" 5
+
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+
+# Check C++11 regex
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for std::regex" >&5
+$as_echo_n "checking for std::regex... " >&6; }
 
 if test "$cross_compiling" = yes; then :
   { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
@@ -6441,7 +6463,6 @@ else
 $as_echo "no" >&6; }
     $as_echo "#define USE_PCRE 1" >>confdefs.h
 
-    CXXFLAGS=$ORIG_CXXFLAGS
     for ac_header in pcre.h
 do :
   ac_fn_cxx_check_header_mongrel "$LINENO" "pcre.h" "ac_cv_header_pcre_h" "$ac_includes_default"
@@ -6512,12 +6533,14 @@ else
   USE_PCRE_FALSE=
 fi
 
+
 ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
+### C++ check end
 
 # Checks for library header files.
 for ac_header in net-snmp/net-snmp-config.h
