@@ -254,6 +254,10 @@ TObjectData *TClassContainer::pushNewClass(void *klassOop,
                      strcmp(objData->className, expectData->className) == 0 &&
                      objData->clsLoaderId == expectData->clsLoaderId)) {
           /* Return existing data on map. */
+          /*
+           * We should not increment reference counter because we do not add
+           * reference.
+           */
           existData = expectData;
         } else {
           /* klass oop is doubling for another class. */
@@ -274,6 +278,7 @@ TObjectData *TClassContainer::pushNewClass(void *klassOop,
       try {
         /* Append class data. */
         (*classMap)[klassOop] = objData;
+        atomic_inc(&objData->numRefs, 1);
       } catch (...) {
         /*
          * Maybe failed to allocate memory at "std::map::operator[]".
@@ -295,7 +300,10 @@ TObjectData *TClassContainer::pushNewClass(void *klassOop,
     /* Broadcast to each local container. */
     for (TLocalClassContainer::iterator it = localContainers.begin();
          it != localContainers.end(); it++) {
-      (*it)->pushNewClass(klassOop, objData);
+      // We should skip myself if "this" ptr is in local container.
+      if (*it != this) {
+        (*it)->pushNewClass(klassOop, objData);
+      }
     }
   }
   /* Release spin lock of containers queue. */
@@ -322,6 +330,7 @@ void TClassContainer::popClass(TObjectData *target) {
 void TClassContainer::removeClass(TObjectData *target) {
   /* Remove item from map. Please callee has container's lock. */
   classMap->erase(target->klassOop);
+  atomic_inc(&target->numRefs, -1);
 
   /* Get spin lock of containers queue. */
   spinLockWait(&queueLock);
@@ -329,11 +338,17 @@ void TClassContainer::removeClass(TObjectData *target) {
     /* Broadcast to each local container. */
     for (TLocalClassContainer::iterator it = localContainers.begin();
          it != localContainers.end(); it++) {
-      /* Get local container's spin lock. */
-      spinLockWait(&(*it)->lockval);
-      { (*it)->classMap->erase(target->klassOop); }
-      /* Release local container's spin lock. */
-      spinLockRelease(&(*it)->lockval);
+      // We should skip myself if "this" ptr is in local container.
+      if (*it != this) {
+        /* Get local container's spin lock. */
+        spinLockWait(&(*it)->lockval);
+        {
+          (*it)->classMap->erase(target->klassOop);
+          atomic_inc(&target->numRefs, -1);
+        }
+        /* Release local container's spin lock. */
+        spinLockRelease(&(*it)->lockval);
+      }
     }
   }
   /* Release spin lock of containers queue. */
@@ -368,7 +383,7 @@ void TClassContainer::allClear(void) {
          ++cur) {
       TObjectData *pos = (*cur).second;
 
-      if ((pos != NULL) && (atomic_get(&pos->numRefsFromChildren) == 0)) {
+      if ((pos != NULL) && (atomic_get(&pos->numRefs) == 0)) {
         free(pos->className);
         free(pos);
       }
@@ -976,7 +991,7 @@ void TClassContainer::commitClassChange(void) {
 
         /* If class is prepared remove from class container. */
         if (unlikely(objData->isRemoved &&
-                     (atomic_get(&objData->numRefsFromChildren) == 0))) {
+                     (atomic_get(&objData->numRefs) == 0))) {
           /*
            * If we do removing map item here,
            * iterator's relationship will be broken.
