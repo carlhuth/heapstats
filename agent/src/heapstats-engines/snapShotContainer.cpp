@@ -190,6 +190,12 @@ TSnapShotContainer::~TSnapShotContainer(void) {
   /* Cleanup elements on counter map. */
   for (TSizeMap::iterator it = counterMap.begin(); it != counterMap.end();
        ++it) {
+    atomic_inc(&it->first->numRefs, -1);
+    if (atomic_get(&it->first->numRefs) == 0) {
+      free(it->first->className);
+      free(it->first);
+    }
+
     TClassCounter *clsCounter = (*it).second;
     if (unlikely(clsCounter == NULL)) {
       continue;
@@ -270,6 +276,7 @@ TClassCounter *TSnapShotContainer::pushNewClass(TObjectData *objData) {
   try {
     /* Set counter map. */
     counterMap[objData] = cur;
+    atomic_inc(&objData->numRefs, 1);
   } catch (...) {
     /*
      * Maybe failed to allocate memory at "std::map::operator[]".
