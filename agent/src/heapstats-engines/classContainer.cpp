@@ -1,7 +1,7 @@
 /*!
  * \file classContainer.cpp
  * \brief This file is used to add up using size every class.
- * Copyright (C) 2011-2015 Nippon Telegraph and Telephone Corporation
+ * Copyright (C) 2011-2017 Nippon Telegraph and Telephone Corporation
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -106,6 +106,12 @@ TClassContainer::TClassContainer(TClassContainer *base, bool needToClr)
       classMap = new TClassMap();
     } else {
       classMap = new TClassMap(*base->classMap);
+
+      /* Increment all reference count in base map. */
+      for (TClassMap::iterator itr = base->classMap->begin();
+           itr != base->classMap->end(); itr++) {
+        atomic_inc(&itr->second->numRefs, 1);
+      }
     }
   } catch (...) {
     /*
@@ -254,6 +260,10 @@ TObjectData *TClassContainer::pushNewClass(void *klassOop,
                      strcmp(objData->className, expectData->className) == 0 &&
                      objData->clsLoaderId == expectData->clsLoaderId)) {
           /* Return existing data on map. */
+          /*
+           * We should not increment reference counter because we do not add
+           * reference.
+           */
           existData = expectData;
         } else {
           /* klass oop is doubling for another class. */
@@ -274,6 +284,7 @@ TObjectData *TClassContainer::pushNewClass(void *klassOop,
       try {
         /* Append class data. */
         (*classMap)[klassOop] = objData;
+        atomic_inc(&objData->numRefs, 1);
       } catch (...) {
         /*
          * Maybe failed to allocate memory at "std::map::operator[]".
@@ -286,6 +297,11 @@ TObjectData *TClassContainer::pushNewClass(void *klassOop,
 
   /* If already exist class data. */
   if (unlikely(existData != NULL)) {
+    /*
+     * We should not increment reference counter here because the reference is
+     * not add at this point.
+     */
+    //atomic_inc(&existData->numRefs, 1);
     return existData;
   }
 
@@ -300,6 +316,7 @@ TObjectData *TClassContainer::pushNewClass(void *klassOop,
   }
   /* Release spin lock of containers queue. */
   spinLockRelease(&queueLock);
+
   return objData;
 }
 
@@ -320,8 +337,14 @@ void TClassContainer::popClass(TObjectData *target) {
  * \param target [in] Remove class data.
  */
 void TClassContainer::removeClass(TObjectData *target) {
+  TClassMap::iterator entry_itr;
+
   /* Remove item from map. Please callee has container's lock. */
-  classMap->erase(target->klassOop);
+  entry_itr = classMap->find(target->klassOop);
+  if (entry_itr != classMap->end()) {
+    classMap->erase(entry_itr);
+    atomic_inc(&target->numRefs, -1);
+  }
 
   /* Get spin lock of containers queue. */
   spinLockWait(&queueLock);
@@ -331,7 +354,13 @@ void TClassContainer::removeClass(TObjectData *target) {
          it != localContainers.end(); it++) {
       /* Get local container's spin lock. */
       spinLockWait(&(*it)->lockval);
-      { (*it)->classMap->erase(target->klassOop); }
+      {
+        entry_itr = (*it)->classMap->find(target->klassOop);
+        if (entry_itr != (*it)->classMap->end()) {
+          (*it)->classMap->erase(entry_itr);
+          atomic_inc(&target->numRefs, -1);
+        }
+      }
       /* Release local container's spin lock. */
       spinLockRelease(&(*it)->lockval);
     }
@@ -344,22 +373,6 @@ void TClassContainer::removeClass(TObjectData *target) {
  * \brief Remove all-class from container.
  */
 void TClassContainer::allClear(void) {
-  /* Get spin lock of containers queue. */
-  spinLockWait(&queueLock);
-  {
-    /* Broadcast to each local container. */
-    for (TLocalClassContainer::iterator it = localContainers.begin();
-         it != localContainers.end(); it++) {
-      /* Get local container's spin lock. */
-      spinLockWait(&(*it)->lockval);
-      { (*it)->classMap->clear(); }
-      /* Release local container's spin lock. */
-      spinLockRelease(&(*it)->lockval);
-    }
-  }
-  /* Release spin lock of containers queue. */
-  spinLockRelease(&queueLock);
-
   /* Get class container's spin lock. */
   spinLockWait(&lockval);
   {
@@ -369,8 +382,7 @@ void TClassContainer::allClear(void) {
       TObjectData *pos = (*cur).second;
 
       if (likely(pos != NULL)) {
-        free(pos->className);
-        free(pos);
+        unloadedList->push(pos);
       }
     }
 
@@ -379,12 +391,12 @@ void TClassContainer::allClear(void) {
       TObjectData *pos = unloadedList->front();
       unloadedList->pop();
 
-      free(pos->className);
-      free(pos);
+      removeClass(pos);
+      if (atomic_get(&pos->numRefs) == 0) {
+        free(pos->className);
+        free(pos);
+      }
     }
-
-    /* Clear all class. */
-    classMap->clear();
   }
   /* Release class container's spin lock. */
   spinLockRelease(&lockval);
@@ -961,9 +973,13 @@ void TClassContainer::commitClassChange(void) {
       TObjectData *target = unloadedList->front();
       unloadedList->pop();
 
+      removeClass(target);
+
       /* Free allocated memory. */
-      free(target->className);
-      free(target);
+      if (atomic_get(&target->numRefs) == 0) {
+        free(target->className);
+        free(target);
+      }
     }
 
     try {
@@ -975,7 +991,7 @@ void TClassContainer::commitClassChange(void) {
         TObjectData *objData = (*cur).second;
 
         /* If class is prepared remove from class container. */
-        if (unlikely(objData->oldTotalSize == 0 && objData->isRemoved)) {
+        if (unlikely(objData->isRemoved)) {
           /*
            * If we do removing map item here,
            * iterator's relationship will be broken.
@@ -1003,8 +1019,10 @@ void TClassContainer::commitClassChange(void) {
         removeClass(target);
 
         /* Free allocated memory. */
-        free(target->className);
-        free(target);
+        if (atomic_get(&target->numRefs) == 0) {
+          free(target->className);
+          free(target);
+        }
       }
     }
   }

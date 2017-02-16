@@ -1,7 +1,7 @@
 /*!
  * \file snapshotContainer.hpp
  * \brief This file is used to add up using size every class.
- * Copyright (C) 2011-2015 Nippon Telegraph and Telephone Corporation
+ * Copyright (C) 2011-2017 Nippon Telegraph and Telephone Corporation
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -67,6 +67,7 @@ typedef struct {
 /*!
  * \brief This structure stored class information.
  */
+#pragma pack(push, 4)
 typedef struct {
   jlong tag;          /*!< Class tag.                                 */
   jlong classNameLen; /*!< Class name.                                */
@@ -78,7 +79,9 @@ typedef struct {
   jlong clsLoaderTag; /*!< Class loader class tag.                    */
   bool isRemoved;     /*!< Class is already unloaded.                 */
   jlong instanceSize; /*!< Class size if this class is instanceKlass. */
+  int numRefs;        /*!< Number of references.                      */
 } TObjectData;
+#pragma pack(pop)
 
 /*!
  * \brief This structure stored child class size information.
