@@ -232,7 +232,7 @@ void TConfiguration::initializeConfig(const TConfiguration *src) {
 TConfiguration::~TConfiguration() {
   for (std::list<TConfigElementSuper *>::iterator itr = configs.begin();
        itr != configs.end(); itr++) {
-    delete *itr;
+    delete (*itr);
   }
 }
 

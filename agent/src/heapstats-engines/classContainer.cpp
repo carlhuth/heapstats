@@ -160,7 +160,7 @@ TClassContainer::~TClassContainer(void) {
   /* Cleanup ClassContainer in TLS. */
   for (TLocalClassContainer::iterator it = localContainers.begin();
        it != localContainers.end(); it++) {
-    delete *it;
+    delete (*it);
   }
 
   /* Cleanup instances. */
