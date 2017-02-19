@@ -22,6 +22,9 @@
 #include "globals.hpp"
 #include "snapShotContainer.hpp"
 
+#include <deque>
+
+
 /*!
  * \brief Pthread mutex for instance control.<br>
  * <br>
@@ -384,9 +387,16 @@ void TSnapShotContainer::clear(bool isForce) {
   /* Get snapshot container's spin lock. */
   spinLockWait(&lockval);
   {
+    std::deque<TObjectData *> removeObjects;
+
     /* Clean heap usage information. */
     for (TSizeMap::iterator it = counterMap.begin(); it != counterMap.end();
          ++it) {
+      TObjectData *objData = it->first;
+      if (objData->isRemoved) {
+        removeObjects.push_back(objData);
+      }
+
       TClassCounter *clsCounter = (*it).second;
       if (unlikely(clsCounter == NULL)) {
         continue;
@@ -399,6 +409,18 @@ void TSnapShotContainer::clear(bool isForce) {
 
       /* Reset counters. */
       this->clearChildClassCounters(clsCounter);
+    }
+
+    for (std::deque<TObjectData *>::iterator itr = removeObjects.begin();
+         itr != removeObjects.end(); itr++) {
+      TObjectData *target = *itr;
+      counterMap.erase(target);
+
+      atomic_inc(&target->numRefs, -1);
+      if (atomic_get(&target->numRefs) == 0) {
+        free(target->className);
+        free(target);
+      }
     }
 
     /* Clean local snapshots. */
