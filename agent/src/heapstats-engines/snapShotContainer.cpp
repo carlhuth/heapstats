@@ -211,8 +211,7 @@ TSnapShotContainer::~TSnapShotContainer(void) {
       counter = counter->next;
 
       atomic_inc(&aCounter->objData->numRefs, -1);
-      if ((atomic_get(&aCounter->objData->numRefs) == 0) &&
-          aCounter->objData->isRemoved) {
+      if (atomic_get(&aCounter->objData->numRefs) == 0) {
         free(aCounter->objData->className);
         free(aCounter->objData);
       }
