@@ -23,9 +23,9 @@
 #define X86_UTIL_H
 
 inline void atomic_inc(int *target, int value) {
-  asm volatile("lock addl %1, %0" : "+m"(target)
-                                  : "er"(value)
-                                  : "memory", "cc");
+  asm volatile("lock addl %1, (%0)" :
+                                    : "r"(target), "er"(value)
+                                    : "memory", "cc");
 }
 
 /*
@@ -37,10 +37,7 @@ inline void atomic_inc(int *target, int value) {
  *     8.2.3.8 Locked Instructions Have a Total Order
  */
 inline int atomic_get(int *target) {
-  register int ret;
-  asm volatile("movl %1, %0" : "=er"(ret) : "m"(target) : );
-
-  return ret;
+  return *target;
 }
 
 #endif  // X86_UTIL_H
