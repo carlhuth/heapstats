@@ -193,8 +193,7 @@ TSnapShotContainer::~TSnapShotContainer(void) {
   /* Cleanup elements on counter map. */
   for (TSizeMap::iterator it = counterMap.begin(); it != counterMap.end();
        ++it) {
-    atomic_inc(&it->first->numRefs, -1);
-    if (atomic_get(&it->first->numRefs) == 0) {
+    if (__sync_fetch_and_add(&it->first->numRefs, -1) == 1) {
       free(it->first->className);
       free(it->first);
     }
@@ -213,8 +212,7 @@ TSnapShotContainer::~TSnapShotContainer(void) {
       TChildClassCounter *aCounter = counter;
       counter = counter->next;
 
-      atomic_inc(&aCounter->objData->numRefs, -1);
-      if (atomic_get(&aCounter->objData->numRefs) == 0) {
+      if (__sync_fetch_and_add(&aCounter->objData->numRefs, -1) == 1) {
         free(aCounter->objData->className);
         free(aCounter->objData);
       }
@@ -278,7 +276,7 @@ TClassCounter *TSnapShotContainer::pushNewClass(TObjectData *objData) {
   try {
     /* Set counter map. */
     counterMap[objData] = cur;
-    atomic_inc(&objData->numRefs, 1);
+    __sync_fetch_and_add(&objData->numRefs, 1);
   } catch (...) {
     /*
      * Maybe failed to allocate memory at "std::map::operator[]".
@@ -317,7 +315,7 @@ TChildClassCounter *TSnapShotContainer::pushNewChildClass(
 
   this->clearObjectCounter(newCounter->counter);
   newCounter->objData = objData;
-  atomic_inc(&newCounter->objData->numRefs, 1);
+  __sync_fetch_and_add(&newCounter->objData->numRefs, 1);
 
   /* Chain children list. */
   TChildClassCounter *counter = clsCounter->child;
@@ -416,8 +414,7 @@ void TSnapShotContainer::clear(bool isForce) {
       TObjectData *target = *itr;
       counterMap.erase(target);
 
-      atomic_inc(&target->numRefs, -1);
-      if (atomic_get(&target->numRefs) == 0) {
+      if (__sync_fetch_and_add(&target->numRefs, -1) == 1) {
         free(target->className);
         free(target);
       }
@@ -525,8 +522,7 @@ void TSnapShotContainer::mergeChildren(void) {
             free(counter->counter);
             free(counter);
 
-            atomic_inc(&objData->numRefs, -1);
-            if (atomic_get(&objData->numRefs) == 0) {
+            if (__sync_fetch_and_add(&objData->numRefs, -1) == 1) {
               free(objData->className);
               free(objData);
             }

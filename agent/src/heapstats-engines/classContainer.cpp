@@ -110,7 +110,7 @@ TClassContainer::TClassContainer(TClassContainer *base, bool needToClr)
       /* Increment all reference count in base map. */
       for (TClassMap::iterator itr = base->classMap->begin();
            itr != base->classMap->end(); itr++) {
-        atomic_inc(&itr->second->numRefs, 1);
+        __sync_fetch_and_add(&itr->second->numRefs, 1);
       }
     }
   } catch (...) {
@@ -284,7 +284,7 @@ TObjectData *TClassContainer::pushNewClass(void *klassOop,
       try {
         /* Append class data. */
         (*classMap)[klassOop] = objData;
-        atomic_inc(&objData->numRefs, 1);
+        __sync_fetch_and_add(&objData->numRefs, 1);
       } catch (...) {
         /*
          * Maybe failed to allocate memory at "std::map::operator[]".
@@ -301,7 +301,7 @@ TObjectData *TClassContainer::pushNewClass(void *klassOop,
      * We should not increment reference counter here because the reference is
      * not add at this point.
      */
-    //atomic_inc(&existData->numRefs, 1);
+    //__sync_fetch_and_add(&existData->numRefs, 1);
     return existData;
   }
 
@@ -343,7 +343,7 @@ void TClassContainer::removeClass(TObjectData *target) {
   entry_itr = classMap->find(target->klassOop);
   if (entry_itr != classMap->end()) {
     classMap->erase(entry_itr);
-    atomic_inc(&target->numRefs, -1);
+    __sync_fetch_and_add(&target->numRefs, -1);
   }
 
   /* Get spin lock of containers queue. */
@@ -358,7 +358,7 @@ void TClassContainer::removeClass(TObjectData *target) {
         entry_itr = (*it)->classMap->find(target->klassOop);
         if (entry_itr != (*it)->classMap->end()) {
           (*it)->classMap->erase(entry_itr);
-          atomic_inc(&target->numRefs, -1);
+          __sync_fetch_and_add(&target->numRefs, -1);
         }
       }
       /* Release local container's spin lock. */
@@ -392,7 +392,7 @@ void TClassContainer::allClear(void) {
       unloadedList->pop();
 
       removeClass(pos);
-      if (atomic_get(&pos->numRefs) == 0) {
+      if (pos->numRefs == 0) {
         free(pos->className);
         free(pos);
       }
@@ -976,7 +976,7 @@ void TClassContainer::commitClassChange(void) {
       removeClass(target);
 
       /* Free allocated memory. */
-      if (atomic_get(&target->numRefs) == 0) {
+      if (target->numRefs == 0) {
         free(target->className);
         free(target);
       }
@@ -1019,7 +1019,7 @@ void TClassContainer::commitClassChange(void) {
         removeClass(target);
 
         /* Free allocated memory. */
-        if (atomic_get(&target->numRefs) == 0) {
+        if (target->numRefs == 0) {
           free(target->className);
           free(target);
         }
