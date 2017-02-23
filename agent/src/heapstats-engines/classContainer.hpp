@@ -273,6 +273,19 @@ class TClassContainer {
    */
   TLocalClassContainer localContainers;
 
+  /*!
+   * \brief Duplicate class map in src.
+   * \param src Source of TClassContainer.
+   * \return Clone of the class map in src.
+   */
+  TClassMap *duplicateClassMap(TClassContainer *src);
+
+  /*!
+   * \brief Decrement reference counters in class map.
+   * \param clsm class map
+   */
+  void decRefsInClassMap(TClassMap *clsm);
+
   RELEASE_ONLY(private :)
   /*!
    * \brief SNMP trap sender.

@@ -92,37 +92,10 @@ TClassContainer::TClassContainer(TClassContainer *base, bool needToClr)
   lockval = 0;
   queueLock = 0;
   needToClear = needToClr;
-  classMap = NULL;
   pSender = NULL;
   unloadedList = NULL;
 
-  if (likely(base != NULL)) {
-    /* Get parent container's spin lock. */
-    spinLockWait(&base->lockval);
-  }
-
-  try {
-    if (unlikely(base == NULL)) {
-      classMap = new TClassMap();
-    } else {
-      classMap = new TClassMap(*base->classMap);
-
-      /* Increment all reference count in base map. */
-      for (TClassMap::iterator itr = base->classMap->begin();
-           itr != base->classMap->end(); itr++) {
-        __sync_fetch_and_add(&itr->second->numRefs, 1);
-      }
-    }
-  } catch (...) {
-    /*
-     * This statement is for release lock. So allocate check is after.
-     */
-  }
-
-  if (likely(base != NULL)) {
-    /* Release parent container's spin lock. */
-    spinLockRelease(&base->lockval);
-  }
+  classMap = (base == NULL) ? new TClassMap() : duplicateClassMap(base);
 
   try {
     /* Check classMap. */
@@ -760,19 +733,7 @@ int TClassContainer::afterTakeSnapShot(TSnapShotContainer *snapshot,
   }
 
   /* Class map used snapshot output. */
-  TClassMap *workClsMap = NULL;
-  /* Get class container's spin lock. */
-  spinLockWait(&lockval);
-  {
-    try {
-      workClsMap = new TClassMap(*this->classMap);
-    } catch (...) {
-      workClsMap = NULL;
-    }
-  }
-  /* Release class container's spin lock. */
-  spinLockRelease(&lockval);
-
+  TClassMap *workClsMap = duplicateClassMap(this);
   if (unlikely(workClsMap == NULL)) {
     int raisedErrNum = errno;
     logger->printWarnMsgWithErrno("Couldn't allocate working memory!");
@@ -794,6 +755,7 @@ int TClassContainer::afterTakeSnapShot(TSnapShotContainer *snapshot,
   } catch (...) {
     int raisedErrNum = errno;
     logger->printWarnMsgWithErrno("Couldn't allocate working memory!");
+    decRefsInClassMap(workClsMap);
     delete workClsMap;
     return raisedErrNum;
   }
@@ -806,6 +768,7 @@ int TClassContainer::afterTakeSnapShot(TSnapShotContainer *snapshot,
     int raisedErrNum = errno;
     logger->printWarnMsgWithErrno("Could not open %s", conf->FileName()->get());
     delete sortArray;
+    decRefsInClassMap(workClsMap);
     delete workClsMap;
     return raisedErrNum;
   }
@@ -830,6 +793,7 @@ int TClassContainer::afterTakeSnapShot(TSnapShotContainer *snapshot,
     logger->printWarnMsg("Could not write snapshot");
     close(fd);
     delete sortArray;
+    decRefsInClassMap(workClsMap);
     delete workClsMap;
     return raisedErrNum;
   }
@@ -908,6 +872,8 @@ int TClassContainer::afterTakeSnapShot(TSnapShotContainer *snapshot,
       }
     }
   }
+
+  decRefsInClassMap(workClsMap);
   delete workClsMap;
 
   /* Set output entry count. */
@@ -1032,3 +998,39 @@ void TClassContainer::commitClassChange(void) {
   /* Cleanup. */
   delete list;
 }
+
+/*!
+ * \brief Duplicate class map in src.
+ * \param src Source of TClassContainer.
+ * \return Clone of the class map in src.
+ */
+TClassMap *TClassContainer::duplicateClassMap(TClassContainer *src) {
+  TClassMap *result;
+
+  /* Get lock in src. */
+  spinLockWait(&src->lockval);
+  {
+    result = new TClassMap(*src->classMap);
+
+    /* Increment all reference count in base map. */
+    for (TClassMap::iterator itr = result->begin();
+         itr != result->end(); itr++) {
+      __sync_fetch_and_add(&itr->second->numRefs, 1);
+    }
+  }
+  /* Release parent container's spin lock. */
+  spinLockRelease(&src->lockval);
+
+  return result;
+}
+
+/*!
+ * \brief Decrement reference counters in class map.
+ * \param clsm class map
+ */
+void TClassContainer::decRefsInClassMap(TClassMap *clsm) {
+  for (TClassMap::iterator itr = clsm->begin(); itr != clsm->end(); itr++) {
+    __sync_fetch_and_add(&itr->second->numRefs, -1);
+  }
+}
+
