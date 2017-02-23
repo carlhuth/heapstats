@@ -929,16 +929,29 @@ int TClassContainer::afterTakeSnapShot(TSnapShotContainer *snapshot,
  *        if we remove item and output map at the same times.
  */
 void TClassContainer::commitClassChange(void) {
-  TClassInfoQueue *list = NULL;
-
   /* Get class container's spin lock. */
   spinLockWait(&lockval);
   {
-    /* Remove unloaded class which detected at "pushNewClass". */
+    /* Search delete target. */
+    for (TClassMap::iterator cur = classMap->begin(); cur != classMap->end();
+         ++cur) {
+      TObjectData *objData = (*cur).second;
+
+      /* If class is prepared remove from class container. */
+      if (unlikely(objData->isRemoved)) {
+        /*
+         * If we do removing map item here,
+         * iterator's relationship will be broken.
+         * So we store to list. And we remove after iterator loop.
+         */
+        unloadedList->push(objData);
+        }
+    }
+
+    /* Remove delete target. */
     while (!unloadedList->empty()) {
       TObjectData *target = unloadedList->front();
-      unloadedList->pop();
-
+      /* Remove from all containers. */
       removeClass(target);
 
       /* Free allocated memory. */
@@ -946,57 +959,12 @@ void TClassContainer::commitClassChange(void) {
         free(target->className);
         free(target);
       }
-    }
 
-    try {
-      list = new TClassInfoQueue();
-
-      /* Search delete target. */
-      for (TClassMap::iterator cur = classMap->begin(); cur != classMap->end();
-           ++cur) {
-        TObjectData *objData = (*cur).second;
-
-        /* If class is prepared remove from class container. */
-        if (unlikely(objData->isRemoved)) {
-          /*
-           * If we do removing map item here,
-           * iterator's relationship will be broken.
-           * So we store to list. And we remove after iterator loop.
-           */
-          list->push(objData);
-        }
-      }
-    } catch (...) {
-      /*
-       * Maybe failed to allocate memory.
-       * E.g. raise exception at "new", "std::queue<T>::push" or etc..
-       */
-      delete list;
-      list = NULL;
-    }
-
-    if (likely(list != NULL)) {
-      /* Remove delete target. */
-      while (!list->empty()) {
-        TObjectData *target = list->front();
-        list->pop();
-
-        /* Remove from all containers. */
-        removeClass(target);
-
-        /* Free allocated memory. */
-        if (target->numRefs == 0) {
-          free(target->className);
-          free(target);
-        }
-      }
+      unloadedList->pop();
     }
   }
   /* Release class container's spin lock. */
   spinLockRelease(&lockval);
-
-  /* Cleanup. */
-  delete list;
 }
 
 /*!
