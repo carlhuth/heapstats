@@ -193,10 +193,7 @@ TSnapShotContainer::~TSnapShotContainer(void) {
   /* Cleanup elements on counter map. */
   for (TSizeMap::iterator it = counterMap.begin(); it != counterMap.end();
        ++it) {
-    if (__sync_fetch_and_add(&it->first->numRefs, -1) == 1) {
-      free(it->first->className);
-      free(it->first);
-    }
+    __sync_fetch_and_add(&it->first->numRefs, -1);
 
     TClassCounter *clsCounter = (*it).second;
     if (unlikely(clsCounter == NULL)) {
@@ -211,11 +208,7 @@ TSnapShotContainer::~TSnapShotContainer(void) {
     while (counter != NULL) {
       TChildClassCounter *aCounter = counter;
       counter = counter->next;
-
-      if (__sync_fetch_and_add(&aCounter->objData->numRefs, -1) == 1) {
-        free(aCounter->objData->className);
-        free(aCounter->objData);
-      }
+      __sync_fetch_and_add(&aCounter->objData->numRefs, -1);
 
       /* Deallocate TChildClassCounter. */
       free(aCounter->counter);
@@ -413,11 +406,7 @@ void TSnapShotContainer::clear(bool isForce) {
          itr != removeObjects.end(); itr++) {
       TObjectData *target = *itr;
       counterMap.erase(target);
-
-      if (__sync_fetch_and_add(&target->numRefs, -1) == 1) {
-        free(target->className);
-        free(target);
-      }
+      __sync_fetch_and_add(&target->numRefs, -1);
     }
 
     /* Clean local snapshots. */
@@ -522,11 +511,7 @@ void TSnapShotContainer::mergeChildren(void) {
             free(counter->counter);
             free(counter);
 
-            if (__sync_fetch_and_add(&objData->numRefs, -1) == 1) {
-              free(objData->className);
-              free(objData);
-            }
-
+            __sync_fetch_and_add(&objData->numRefs, -1);
             counter = nextCounter;
           } else {
             /* Search child class. */
