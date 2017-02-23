@@ -920,6 +920,7 @@ jint onAgentInitForSnapShot(jvmtiEnv *jvmti) {
  */
 void onAgentFinalForSnapShot(JNIEnv *env) {
   /* Destroy SnapShot Processor instance. */
+  snapShotProcessor->terminate();
   delete snapShotProcessor;
   snapShotProcessor = NULL;
 
@@ -941,9 +942,11 @@ void onAgentFinalForSnapShot(JNIEnv *env) {
   clsContainer = NULL;
 
   /* Destroy object that is each snapshot trigger. */
+  gcWatcher->terminate();
   delete gcWatcher;
   gcWatcher = NULL;
 
+  timer->terminate();
   delete timer;
   timer = NULL;
 
