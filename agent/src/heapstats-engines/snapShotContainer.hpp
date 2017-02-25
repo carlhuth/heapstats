@@ -1,7 +1,7 @@
 /*!
  * \file snapshotContainer.hpp
  * \brief This file is used to add up using size every class.
- * Copyright (C) 2011-2015 Nippon Telegraph and Telephone Corporation
+ * Copyright (C) 2011-2017 Nippon Telegraph and Telephone Corporation
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -25,6 +25,7 @@
 #include <pthread.h>
 
 #include <tr1/unordered_map>
+#include <tr1/unordered_set>
 #include <queue>
 
 #include "jvmInfo.hpp"
@@ -79,6 +80,12 @@ typedef struct {
   bool isRemoved;     /*!< Class is already unloaded.                 */
   jlong instanceSize; /*!< Class size if this class is instanceKlass. */
 } TObjectData;
+
+/*!
+ * \brief This type is for storing unloaded class information.
+ */
+typedef std::tr1::unordered_set<TObjectData *,
+                                TNumericalHasher<void *> > TClassInfoSet;
 
 /*!
  * \brief This structure stored child class size information.
@@ -151,6 +158,10 @@ class TSnapShotContainer;
 typedef std::tr1::unordered_map<pthread_t, TSnapShotContainer *,
                                 TNumericalHasher<pthread_t> >
     TLocalSnapShotContainer;
+
+typedef std::tr1::unordered_set<TSnapShotContainer *,
+                                TNumericalHasher<void *> > TActiveSnapShots;
+
 
 /*!
  * \brief This class is stored class object usage on heap.
@@ -397,6 +408,19 @@ class TSnapShotContainer {
    */
   inline void setIsCleared(bool flag) { this->isCleared = flag; }
 
+  /*!
+   * \brief Remove unloaded TObjectData in this snapshot container.
+   *        This function should be called at safepoint.
+   * \param unloadedList Set of unloaded TObjectData.
+   */
+  void removeObjectData(TClassInfoSet &unloadedList);
+
+  /*!
+   * \brief Remove unloaded TObjectData all active snapshot container.
+   * \param unloadedList Set of unloaded TObjectData.
+   */
+  static void removeObjectDataFromAllSnapShots(TClassInfoSet &unloadedList);
+
  protected:
   /*!
    * \brief TSnapshotContainer constructor.
@@ -482,6 +506,11 @@ class TSnapShotContainer {
    * \brief Is this container is cleared ?
    */
   volatile bool isCleared;
+
+  /*!
+   * \brief Set of active TSnapShotContainer set
+   */
+  static TActiveSnapShots activeSnapShots;
 };
 
 /* Include optimized inline functions. */

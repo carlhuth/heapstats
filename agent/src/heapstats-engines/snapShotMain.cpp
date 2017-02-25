@@ -1,7 +1,7 @@
 /*!
  * \file snapShotMain.cpp
  * \brief This file is used to take snapshot.
- * Copyright (C) 2011-2015 Nippon Telegraph and Telephone Corporation
+ * Copyright (C) 2011-2017 Nippon Telegraph and Telephone Corporation
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -142,31 +142,6 @@ void JNICALL
   if (likely(klassOop != NULL)) {
     /* Push new loaded class. */
     clsContainer->pushNewClass(klassOop);
-  }
-}
-
-/*!
- * \brief Class unload event.
- * \param jvmti  [in] JVMTI environment object.
- * \param env    [in] JNI environment object.
- * \param thread [in] Java thread object.
- * \param klass  [in] Unload class object.
- * \sa    from: hotspot/src/share/vm/prims/jvmti.xml
- */
-void JNICALL
-    OnClassUnload(jvmtiEnv *jvmti, JNIEnv *env, jthread thread, jclass klass) {
-  /* Get klassOop. */
-  void *mirror = *(void **)klass;
-  void *klassOop = TVMFunctions::getInstance()->AsKlassOop(mirror);
-
-  if (likely(klassOop != NULL)) {
-    /* Search class. */
-    TObjectData *counter = clsContainer->findClass(klassOop);
-
-    if (likely(counter != NULL)) {
-      /* Remove class data. */
-      clsContainer->popClass(counter);
-    }
   }
 }
 
