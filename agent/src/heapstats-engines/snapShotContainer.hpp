@@ -77,7 +77,6 @@ typedef struct {
   TOopType oopType;   /*!< Type of class.                             */
   jlong clsLoaderId;  /*!< Class loader instance id.                  */
   jlong clsLoaderTag; /*!< Class loader class tag.                    */
-  bool isRemoved;     /*!< Class is already unloaded.                 */
   jlong instanceSize; /*!< Class size if this class is instanceKlass. */
 } TObjectData;
 

@@ -479,40 +479,21 @@ void TSnapShotContainer::mergeChildren(void) {
 
         /* Loop each children class. */
         TChildClassCounter *counter = srcClsCounter->child;
-        TChildClassCounter *prevCounter = NULL;
         while (counter != NULL) {
           TObjectData *objData = counter->objData;
 
-          /*
-           * If the class of objData is already unloaded, we should remove
-           * reference to it from child object data.
-           */
-          if (objData->isRemoved) {
-            if (prevCounter == NULL) {
-              srcClsCounter->child = counter->next;
-            } else {
-              prevCounter->next = counter->next;
-            }
-
-            /* Deallocate TChildClassCounter. */
-            free(counter->counter);
-            free(counter);
-          } else {
-            /* Search child class. */
-            TChildClassCounter *childClsData =
+          /* Search child class. */
+          TChildClassCounter *childClsData =
                       this->findChildClass(clsCounter, objData->klassOop);
 
-            /* Register class as child class. */
-            if (unlikely(childClsData == NULL)) {
-              childClsData = this->pushNewChildClass(clsCounter, objData);
-            }
+          /* Register class as child class. */
+          if (unlikely(childClsData == NULL)) {
+            childClsData = this->pushNewChildClass(clsCounter, objData);
+          }
 
-            if (likely(childClsData != NULL)) {
-              /* Marge children class heap usage. */
-              this->addInc(childClsData->counter, counter->counter);
-            }
-
-            prevCounter = counter;
+          if (likely(childClsData != NULL)) {
+            /* Marge children class heap usage. */
+            this->addInc(childClsData->counter, counter->counter);
           }
 
           counter = counter->next;
